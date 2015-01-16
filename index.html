@@ -98,7 +98,7 @@ vec2 lngLatToTex(vec2 lngLat) {
 //  A'x^2 + (-z) + F' = 0 => z = A'x^2 + F'
 //
 // The vector below is (A', F') for the mirror:
-vec2 mirrorParabola = vec2(0.5, -1.0);
+vec2 mirrorParabola = vec2(0.5, -1.1);
 
 // Intersect a ray in 2d with the mirror parabola. Return the 2d point of
 // intersection in .xy with .z != 0.0. If no intersection, set .z = 0.
@@ -154,6 +154,7 @@ vec2 paraolaNormal(float x) {
 void main() {
   // Default colour of fragment
   gl_FragColor = vec4(0.5 + 0.5 * meshCoord,1);
+  gl_FragColor = vec4(0,0,1.0,1);
 
   // Form a ray to cast into scene
   vec3 rayOrigin = vec3(meshCoord.xy, 10), rayDirection = vec3(0, 0, -1);

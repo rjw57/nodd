@@ -21,7 +21,7 @@ window.addEventListener('resize', windowResized, false);
 windowResized();
 
 // Create a texture from an external source
-var world_texture = THREE.ImageUtils.loadTexture("tex/world-map-1.jpg");
+var world_texture = THREE.ImageUtils.loadTexture("tex/world-map-2.png");
 world_texture.wrapS = THREE.RepeatWrapping;
 
 // Create a single plane which covers the NODDY logo area
