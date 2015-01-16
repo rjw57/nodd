@@ -2,14 +2,23 @@
 
 var scene = new THREE.Scene();
 var renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild( renderer.domElement );
 
 // Create a camera which covers the entire window with x in range [-1, 1] and y
 // scaled to give an aspect ratio of 1. Near and far are also set to -1, 1.
 var rendererAspectRatio = window.innerHeight / window.innerWidth;
-var camera = new THREE.OrthographicCamera(-1, 1, -rendererAspectRatio, rendererAspectRatio, 1, 100);
+var camera = new THREE.OrthographicCamera(-1, 1, rendererAspectRatio, -rendererAspectRatio, 1, 100);
 camera.position.z = 10;
+
+function windowResized() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  var rendererAspectRatio = window.innerHeight / window.innerWidth;
+  camera.top = rendererAspectRatio;
+  camera.bottom = -rendererAspectRatio;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', windowResized, false);
+windowResized();
 
 // Create a texture from an external source
 var world_texture = THREE.ImageUtils.loadTexture("tex/world-map-1.jpg");
@@ -27,8 +36,6 @@ var nodd_material = new THREE.ShaderMaterial({
   },
 });
 var nodd_mesh = new THREE.Mesh(nodd_geom, nodd_material);
-nodd_mesh.rotation.y = Math.PI; // To show the visible face to the camera
-nodd_mesh.rotation.z = Math.PI;
 
 scene.add(nodd_mesh);
 
