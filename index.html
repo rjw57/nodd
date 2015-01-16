@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NODDY logo</title>
+  <style>
+    body { margin: 0; }
+    canvas { width: 100%; height: 100%; }
+  </style>
+  <script type="text/plain+vertexshader" id="noddyVS">
+varying vec3 meshCoord;
+
+void main() {
+  // Default vertex shader.
+  gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4( position, 1.0 );
+
+  // Set mesh co-ordinate.
+  meshCoord = position;
+}
+  </script>
+  <script type="text/plain+fragmentshader" id="noddyFS">
+varying vec3 meshCoord;
+uniform float time;
+
+// project a point p onto ray
+vec3 projectOntoRay(vec3 p, vec3 origin, vec3 direction) {
+  vec3 u = p - origin;
+  vec3 oud = direction * (dot(direction, u) / length(direction));
+  return origin + oud;
+}
+
+// Cast a ray towards the central globe at 0,0,0 with radius of 0.5. If it
+// intersects, the x- and y- components of the return value are the longitude and
+// latitude of the intersection and the z component is non-zero. If it does not
+// intersect, the z component is zero.
+//
+// TODO: case where centre of sphere is behind origin or ray originates in sphere.
+vec3 rayCastGlobe(vec3 origin, vec3 direction) {
+  vec3 returnVal = vec3(0,0,0);
+  vec3 globeCentre = vec3(0,0,0);
+  float globeRadius = 0.5 * 2.0/3.0;
+
+  // Compute distance of ray to sphere to see if there is an intersection
+  vec3 v = globeCentre - origin;
+  if(length(v) <= globeRadius) {
+    // TODO: internal intersection
+    return returnVal;
+  }
+
+  float sphereBehindOrigin = dot(direction, v);
+  if(sphereBehindOrigin > 0.0) {
+    // Sphere in front of ray
+    // TODO: Sphere behind ray
+
+    // project centre onto ray
+    vec3 pc = projectOntoRay(globeCentre, origin, direction);
+
+    // dist of centre from ray
+    float cdist = length(globeCentre - pc);
+
+    if(cdist <= globeRadius) {
+      // some intersection, find distance to closest point
+      float di1 = length(pc - origin) - sqrt(globeRadius*globeRadius - cdist*cdist);
+
+      // find closest point relative to sphere centre
+      vec3 intPt = (origin + di1 * direction) - globeCentre;
+
+      // compute angles
+      float phi = atan(intPt.z, intPt.x);
+      float theta = acos(-intPt.y / globeRadius);
+      returnVal = vec3(phi, theta, 1);
+    }
+  }
+
+  return returnVal;
+}
+
+uniform sampler2D mapTexture;
+
+// Convert a lnglat to a texture co-ord
+vec2 lngLatToTex(vec2 lngLat) {
+    vec2 tc = lngLat * vec2(0.5/3.14159, 1.0/3.14159);
+    tc.x += 0.5 + time;
+    return tc;
+}
+
+// Equation of the mirror parabola in the xz plane.
+// A parabola in the x-z plane is defined via the equation:
+//
+//  Ax^2 + Bxy + Cz^2 + Dx + Ez + F = 0, with B = 4AC
+//
+// We want a simple parabola similar to z = x^2 + k so we mandate that
+// C = D = 0 => B = 0 and we have the simpler eqn.
+//
+//  Ax^2 + Ez + F = 0
+//
+// wlog, divide through by -E:
+//
+//  A'x^2 + (-z) + F' = 0 => z = A'x^2 + F'
+//
+// The vector below is (A', F') for the mirror:
+vec2 mirrorParabola = vec2(0.5, -1.0);
+
+// Intersect a ray in 2d with the mirror parabola. Return the 2d point of
+// intersection in .xy with .z != 0.0. If no intersection, set .z = 0.
+vec3 rayCastMirror(vec2 origin, vec2 direction) {
+  vec3 returnVal = vec3(0,0,0);
+
+  // After http://www.bmsc.washington.edu/people/merritt/graphics/quadrics.html
+  // The general quadric surface equation is
+  //
+  //   F(x, y, z) = Ax2 + By2 + Cz2 + Dxy+ Exz + Fyz + Gx + Hy + Iz + J = 0
+  //
+  // Letting (u,v) = mirrorParabola,
+  //
+  // A = u, B = 0, C = 0, D = 0, E = 0, F = 0, G = 0, H = 0, I = -1, J = v
+
+  float A = mirrorParabola.x, J = mirrorParabola.y, I = -1.0;
+  float Aq = A * direction.x;
+  float Bq = 2.0 * A * origin.x * direction.x + I * direction.y;
+  float Cq = A * origin.x * origin.x + I * origin.y + J;
+
+  // Solution point
+  float t = -1.0;
+  if(Aq == 0.0) {
+    t = -Cq / Bq;
+  } else {
+    float disc = Bq*Bq - 4.0*Aq*Cq;
+    if(disc >= 0.0) {
+      t = (-Bq - sqrt(disc)) / (2.0 * Aq);
+      if(t <= 0.0) {
+        t = (-Bq + sqrt(disc)) / (2.0 * Aq);
+      }
+    }
+  }
+
+  if(t >= 0.0) {
+    returnVal.xy = origin + t*direction;
+    returnVal.z = 1.0;
+  }
+
+  return returnVal;
+}
+
+// Compute the normal to the mirror at a given x
+vec2 paraolaNormal(float x) {
+  // Firstly, compute vector pointing along parabola in increasing x:
+  // z = A'x^2 + F => dzdx = 2A'x
+  vec2 alongCurve = normalize(vec2(1.0, 2.0 * mirrorParabola.x * x));
+
+  // Return rotated vector
+  return alongCurve.yx * vec2(-1.0, 1.0);
+}
+
+void main() {
+  // Default colour of fragment
+  gl_FragColor = vec4(0.5 + 0.5 * meshCoord,1);
+
+  // Form a ray to cast into scene
+  vec3 rayOrigin = vec3(meshCoord.xy, 10), rayDirection = vec3(0, 0, -1);
+
+  // Do we hit globe?
+  vec3 globeIntersection = rayCastGlobe(rayOrigin, rayDirection);
+  vec3 mirrorIntersection = rayCastMirror(rayOrigin.xz, rayDirection.xz);
+
+  if(globeIntersection.z != 0.0) {
+    // Convert longitude and latitude to normalised co-ords
+    gl_FragColor *= 0.0;
+    gl_FragColor.rg = fract(1.0 + fract(lngLatToTex(globeIntersection.xy)));
+    gl_FragColor = texture2D(mapTexture, lngLatToTex(globeIntersection.xy));
+  } else {
+    // Do we hit mirror? (Ignore y plane)
+    vec3 mirrorIntersection = rayCastMirror(rayOrigin.xz, rayDirection.xz);
+    if(mirrorIntersection.z != 0.0) {
+      vec2 normal = paraolaNormal(mirrorIntersection.x);
+      // Form new a ray from this intersection
+      rayOrigin.xz = mirrorIntersection.xy;
+      rayDirection = vec3(normal.x, 0.0, normal.y);
+
+      // Again, intersect globe
+      globeIntersection = rayCastGlobe(rayOrigin, rayDirection);
+      if(globeIntersection.z != 0.0) {
+        // Convert longitude and latitude to normalised co-ords
+        gl_FragColor *= 0.0;
+        gl_FragColor.rg = fract(1.0 + fract(lngLatToTex(globeIntersection.xy)));
+        gl_FragColor = texture2D(mapTexture, lngLatToTex(globeIntersection.xy));
+      }
+    }
+  }
+
+  //gl_FragColor.y = globeIntersection.z < mirrorIntersection.z ? 1.0 : 0.0;
+}
+  </script>
+</head>
+<body>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/three.js/r69/three.min.js"></script>
+  <script src="noddy.js"></script>
+</body>
+</html>
